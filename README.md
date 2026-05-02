@@ -1,9 +1,21 @@
-# ngrao
+# ng-rao
 
-**ng**RAO — Angular **R**eactive **A**rchitecture **O**perator
+<p align="center">
+  <b>ngRAO — Angular Reactive Architecture Operator</b><br/>
+  Reorganiza projetos Angular automaticamente. Move arquivos, reescreve imports, gera barrels.<br/>
+  Tudo local. Sem servidor. Sem configuração.
+</p>
 
-> Por **Vinícius Negrão** — Few Company
-> Open source. Gratuito. MIT.
+<p align="center">
+  <a href="https://www.npmjs.com/package/ng-rao"><img src="https://img.shields.io/npm/v/ng-rao?color=cb3837&label=npm" alt="npm version"/></a>
+  <a href="https://www.npmjs.com/package/ng-rao"><img src="https://img.shields.io/npm/dm/ng-rao?color=cb3837" alt="npm downloads"/></a>
+  <img src="https://img.shields.io/badge/Angular-19%2B-dd0031?logo=angular" alt="Angular 19+"/>
+  <img src="https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js" alt="Node 18+"/>
+  <img src="https://img.shields.io/badge/tests-95%20passing-brightgreen" alt="95 tests passing"/>
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"/>
+</p>
+
+---
 
 ```bash
 npm i -g ng-rao
@@ -14,18 +26,18 @@ ngrao apply
 
 ## O nome
 
-**ngrao** carrega duas leituras no mesmo nome:
+**ng-rao** tem duas leituras no mesmo nome:
 
 - **Negrão** — sobrenome do autor, Vinícius Negrão
 - **ng + RAO** — `ng` de Angular, `RAO` de **Reactive Architecture Operator**
 
-"Reactive" não é só referência ao Angular (RxJS, signals, reactive forms) — é a proposta da ferramenta: ela reage à estrutura que encontra, analisa, planeja e orquestra a reorganização sem você ter que fazer nada manualmente.
+"Reactive" não é só referência ao Angular (RxJS, signals, reactive forms) — é a proposta da ferramenta: ela *reage* à estrutura que encontra, analisa, planeja e orquestra a reorganização sem você fazer nada manualmente.
 
 ---
 
 ## O que faz
 
-Analisa todos os arquivos TypeScript de um projeto Angular e os move para a pasta correta com base no tipo e escopo de cada arquivo, reescrevendo todos os imports afetados automaticamente.
+Analisa todos os arquivos `.ts` de um projeto Angular e os move para a pasta correta com base no tipo e escopo de cada um, reescrevendo todos os imports afetados automaticamente.
 
 | Tipo | Destino |
 |------|---------|
@@ -40,7 +52,7 @@ Analisa todos os arquivos TypeScript de um projeto Angular e os move para a past
 | Pipe | `src/app/shared/pipes/[name]/` |
 | Normalizer | `src/app/shared/normalizers/[domain]/` |
 
-Arquivos que já estão no lugar certo são ignorados. A operação é idempotente — pode rodar mais de uma vez sem efeito colateral.
+Arquivos que já estão no lugar certo são ignorados. A operação é **idempotente** — pode rodar mais de uma vez sem efeito colateral.
 
 ---
 
@@ -66,7 +78,7 @@ src/app/
     └── pipes/           ← index.ts gerado
 ```
 
-Os `index.ts` gerados são barrels com comentário de uso — nunca sobrescrevem nada que já exista.
+Os `index.ts` gerados são barrels com comentário de uso. **Nunca sobrescrevem nada que já exista.**
 
 ---
 
@@ -83,7 +95,7 @@ ngrao apply --yes     # pula confirmação
 
 ### `ngrao preview`
 
-Mostra o que seria feito sem alterar nada no disco.
+Mostra o que seria feito **sem alterar nada** no disco. Seguro para rodar em qualquer projeto.
 
 ```bash
 ngrao preview
@@ -91,7 +103,7 @@ ngrao preview
 
 ### `ngrao check`
 
-Verifica se o projeto está organizado. Sai com código 1 se houver arquivos fora do lugar — útil em CI.
+Verifica se o projeto está organizado. Sai com código `1` se houver arquivos fora do lugar — útil em CI.
 
 ```bash
 ngrao check
@@ -99,7 +111,7 @@ ngrao check
 
 ### `ngrao barrel <path>`
 
-Gera um `index.ts` barrel para uma pasta específica (não sobrescreve se já existir).
+Gera um `index.ts` barrel para uma pasta específica. Não sobrescreve se já existir.
 
 ```bash
 ngrao barrel src/app/core/guards
@@ -109,16 +121,16 @@ ngrao barrel src/app/core/guards
 
 ## Como funciona
 
-### 1. Classificação
+### 1 — Classificação
 
 Varre `src/app/` recursivamente e determina três atributos por arquivo:
 
-**`kind`** — detectado pelo sufixo:
-`.guard.ts`, `.service.ts`, `.interceptor.ts`, `.component.ts`, `.model.ts`, `.mock.ts`, `.pipe.ts`, `.normalizer.ts`
+**`kind`** — detectado pelo sufixo do arquivo:
+`.guard.ts` `.service.ts` `.interceptor.ts` `.component.ts` `.model.ts` `.mock.ts` `.pipe.ts` `.normalizer.ts`
 
-**`scope`** — regras:
-- `guard` e `interceptor` → sempre `core`
-- `pipe` e `normalizer` → sempre `shared`
+**`scope`**:
+- `guard` / `interceptor` → sempre `core`
+- `pipe` / `normalizer` → sempre `shared`
 - `service` com `providedIn: 'root'` → `core`; sem → `feature`; dentro de `shared/` → `shared`
 - `model` / `mock` dentro de `shared/` → `shared`; fora → `core`
 - `component` dentro de `shared/` → `shared`; fora → `feature`
@@ -126,30 +138,59 @@ Varre `src/app/` recursivamente e determina três atributos por arquivo:
 **`domain`** — por prioridade:
 1. Path contém `modules/[feature]/` → usa `feature`
 2. Path contém `core/[type]/[domain]/` → usa `domain`
-3. Fallback: primeiro segmento do nome do arquivo (`alarms-list.service.ts` → `alarms`)
+3. Fallback: primeiro segmento do nome (`alarms-list.service.ts` → `alarms`)
 
 **`role`** (só para components):
-Lê todos os `*-routing.module.ts` do projeto. Se a classe aparece em algum `component: XxxComponent`, o role é `page`; senão, `component`.
+Lê todos os `*-routing.module.ts`. Se a classe aparece em `component: XxxComponent`, é `page`. Senão, `component`.
 
-### 2. Planejamento
+### 2 — Planejamento
 
 Gera um plano de ações sem tocar no disco:
 - `create_dir` — pastas da estrutura base que ainda não existem
 - `move` — arquivo fora do lugar → novo caminho
-- `skip` — arquivo já está correto
+- `skip` — arquivo já está no lugar certo
 - `create_barrel` — `index.ts` para pastas que precisam de barrel
 
-### 3. Execução
+### 3 — Execução
 
-Aplica o plano e, após todos os moves, reescreve os imports relativos em **todos** os `.ts` do projeto — inclusive nos arquivos que também foram movidos.
+Aplica o plano e reescreve os imports relativos em **todos** os `.ts` do projeto — inclusive nos arquivos que também foram movidos.
 
 ### Arquivos nunca movidos
 
 - `app.component.ts`
-- Qualquer arquivo já dentro de `shared/`
+- Arquivos dentro de `shared/` (já estão no lugar)
 - Arquivos dentro de `sub-components/`
 - `index.ts` (barrels)
-- `*.spec.ts`, `*.module.ts`, `*-routing.module.ts`, `*.sandbox.ts`
+- `*.spec.ts` `*.module.ts` `*-routing.module.ts` `*.sandbox.ts`
+
+---
+
+## Testado em projetos reais
+
+Antes da publicação, `ngrao preview` foi rodado contra **39 projetos Angular públicos no GitHub** — de 3 a 326 arquivos `.ts`. Zero crashes.
+
+| Projeto | Arquivos | Moves |
+|---------|----------|-------|
+| akveo/ngx-admin | 236 | 169 |
+| aviabird/angularspree | 326 | 100 |
+| OwenKelvin/Angular-School-Management-System | 201 | 65 |
+| gothinkster/angular-realworld-example-app | 46 | 31 |
+| mtwn105/Clinix-Angular | 59 | 45 |
+
+Detalhes completos em [HOW_WE_TESTED.md](https://github.com/negra1m/ngrao/blob/main/HOW_WE_TESTED.md).
+
+---
+
+## Instalação
+
+```bash
+# global
+npm i -g ng-rao
+
+# ou como devDependency
+npm i -D ng-rao
+npx ngrao apply
+```
 
 ---
 
@@ -157,33 +198,7 @@ Aplica o plano e, após todos os moves, reescreve os imports relativos em **todo
 
 - Angular 19+ com Standalone Components
 - Node.js 18+
-- Projetos com ou sem NgModules (routing modules são lidos para detectar pages, mas não movidos)
-
----
-
-## Instalação
-
-```bash
-npm i -g ng-rao
-```
-
-Ou como devDependency:
-
-```bash
-npm i -D ng-rao
-npx ngrao apply
-```
-
----
-
-## Desenvolvimento
-
-```bash
-npm install
-npm run build       # compila com tsup
-npm test            # vitest (95 testes)
-npm run test:watch  # modo watch
-```
+- Funciona com ou sem NgModules
 
 ---
 
