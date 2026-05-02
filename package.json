@@ -1,5 +1,5 @@
 {
-  "name": "ngrao",
+  "name": "@negra1m/ngrao",
   "version": "1.0.0",
   "description": "Angular Reactive Architecture Operator — applies standard folder structure to Angular 19+ projects",
   "keywords": ["angular", "architecture", "scaffold", "boilerplate", "reactive", "folder-structure", "cli", "barrel", "standalone"],

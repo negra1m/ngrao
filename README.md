@@ -6,7 +6,7 @@
 > Open source. Gratuito. MIT.
 
 ```bash
-npm i -g ngrao
+npm i -g @negra1m/ngrao
 ngrao apply
 ```
 
@@ -164,13 +164,13 @@ Aplica o plano e, após todos os moves, reescreve os imports relativos em **todo
 ## Instalação
 
 ```bash
-npm i -g ngrao
+npm i -g @negra1m/ngrao
 ```
 
 Ou como devDependency:
 
 ```bash
-npm i -D ngrao
+npm i -D @negra1m/ngrao
 npx ngrao apply
 ```
 
