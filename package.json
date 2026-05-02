@@ -1,6 +1,6 @@
 {
   "name": "ng-rao",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Angular Reactive Architecture Operator — applies standard folder structure to Angular 19+ projects",
   "keywords": ["angular", "architecture", "scaffold", "boilerplate", "reactive", "folder-structure", "cli", "barrel", "standalone"],
   "license": "MIT",
