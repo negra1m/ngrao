@@ -60,6 +60,22 @@ export function execute(plan: ActionPlan, cwd: string): Report {
       logger.move(action.from, action.to);
       moveMap.set(action.from, action.to);
       report.moved++;
+
+      // move arquivos associados: .html, .scss, .css, .spec.ts, etc.
+      const fromDir = path.dirname(fromAbs);
+      const toDir = path.dirname(toAbs);
+      const baseName = path.basename(action.from, '.ts'); // ex: search-box.component
+      const siblings = getSiblingFiles(fromDir, baseName);
+      for (const sibling of siblings) {
+        const siblingDest = path.join(toDir, path.basename(sibling));
+        if (!fs.existsSync(siblingDest)) {
+          fs.renameSync(sibling, siblingDest);
+          // registra no moveMap para que rewriteImports atualize templateUrl/styleUrl corretamente
+          const siblingFrom = path.relative(cwd, sibling).replace(/\\/g, '/');
+          const siblingTo = path.relative(cwd, siblingDest).replace(/\\/g, '/');
+          moveMap.set(siblingFrom, siblingTo);
+        }
+      }
     }
   }
 
@@ -72,8 +88,11 @@ export function execute(plan: ActionPlan, cwd: string): Report {
 
 // Reescreve imports em todos os .ts do projeto para refletir os moves
 function rewriteImports(cwd: string, moveMap: Map<string, string>): void {
-  const appRoot = path.join(cwd, 'src', 'app');
-  const allTs = walkTs(appRoot);
+  const srcRoot = path.join(cwd, 'src');
+  const allTs = walkTs(srcRoot);
+
+  // lê baseUrl do tsconfig para resolver imports absolutos sem prefixo 'src/'
+  const baseUrl = readBaseUrl(cwd);
 
   // mapa inverso: novo caminho → caminho original (para arquivos que foram movidos)
   const reverseMap = new Map<string, string>();
@@ -92,25 +111,61 @@ function rewriteImports(cwd: string, moveMap: Map<string, string>): void {
       ? path.dirname(path.join(cwd, originalFileRel))
       : path.dirname(file);
 
-    const importRegex = /from\s+['"]([^'"]+)['"]/g;
-    content = content.replace(importRegex, (match, importPath: string) => {
-      if (!importPath.startsWith('.')) return match;
+    const rewritePath = (importPath: string): string | null => {
+      let resolvedImport: string;
 
-      const resolvedImport = path.resolve(effectiveFileDir, importPath);
+      if (importPath.startsWith('.')) {
+        resolvedImport = path.resolve(effectiveFileDir, importPath);
+      } else if (importPath.startsWith('src/')) {
+        resolvedImport = path.join(cwd, importPath);
+      } else if (baseUrl && !importPath.startsWith('@')) {
+        // import absoluto com baseUrl customizado (ex: 'app/services/foo' com baseUrl: 'src/')
+        resolvedImport = path.join(cwd, baseUrl, importPath);
+      } else {
+        return null;
+      }
+
       const relativeImport = path.relative(cwd, resolvedImport).replace(/\\/g, '/');
-
       const importWithTs = relativeImport.endsWith('.ts') ? relativeImport : `${relativeImport}.ts`;
+      const newTargetPath = moveMap.get(importWithTs) ?? moveMap.get(relativeImport);
+      const finalTargetRel = newTargetPath ?? relativeImport;
 
-      const newPath = moveMap.get(importWithTs) ?? moveMap.get(relativeImport);
-      if (!newPath) return match;
+      if (!newTargetPath && !originalFileRel) return null;
 
-      // calcula o novo import relativo a partir da localização atual do arquivo
-      const newAbsPath = path.join(cwd, newPath.replace(/\.ts$/, ''));
-      const newRelative = path.relative(path.dirname(file), newAbsPath).replace(/\\/g, '/');
+      const finalTargetAbs = path.join(cwd, finalTargetRel.replace(/\.ts$/, ''));
+      const newRelative = path.relative(path.dirname(file), finalTargetAbs).replace(/\\/g, '/');
       const newRelativeWithDot = newRelative.startsWith('.') ? newRelative : `./${newRelative}`;
 
-      changed = true;
-      return match.replace(importPath, newRelativeWithDot);
+      if (newRelativeWithDot === importPath) return null;
+      return newRelativeWithDot;
+    };
+
+    // from '...'
+    content = content.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (m, q: string, p: string) => {
+      const r = rewritePath(p); if (!r) return m; changed = true; return `from ${q}${r}${q}`;
+    });
+
+    // import('...')  — lazy imports e dynamic imports
+    content = content.replace(/\bimport\s*\(\s*(['"])([^'"]+)\1\s*\)/g, (m, q: string, p: string) => {
+      const r = rewritePath(p); if (!r) return m; changed = true; return `import(${q}${r}${q})`;
+    });
+
+    // templateUrl: '...'
+    content = content.replace(/\btemplateUrl\s*:\s*(['"])([^'"]+)\1/g, (m, q: string, p: string) => {
+      const r = rewritePath(p); if (!r) return m; changed = true; return `templateUrl: ${q}${r}${q}`;
+    });
+
+    // styleUrl: '...'
+    content = content.replace(/\bstyleUrl\s*:\s*(['"])([^'"]+)\1/g, (m, q: string, p: string) => {
+      const r = rewritePath(p); if (!r) return m; changed = true; return `styleUrl: ${q}${r}${q}`;
+    });
+
+    // styleUrls: ['...', '...']
+    content = content.replace(/\bstyleUrls\s*:\s*\[([^\]]*)\]/g, (m, inner: string) => {
+      const rewritten = inner.replace(/(['"])([^'"]+)\1/g, (sm: string, sq: string, sp: string) => {
+        const r = rewritePath(sp); if (!r) return sm; changed = true; return `${sq}${r}${sq}`;
+      });
+      return `styleUrls: [${rewritten}]`;
     });
 
     if (changed) {
@@ -118,6 +173,41 @@ function rewriteImports(cwd: string, moveMap: Map<string, string>): void {
       logger.log(`imports atualizados: ${fileRel}`);
     }
   }
+}
+
+// Lê o baseUrl do tsconfig para resolver imports absolutos (ex: baseUrl: "src/")
+function readBaseUrl(cwd: string): string | null {
+  const candidates = ['tsconfig.json', 'tsconfig.app.json'];
+  for (const candidate of candidates) {
+    const tsconfigPath = path.join(cwd, candidate);
+    if (!fs.existsSync(tsconfigPath)) continue;
+    try {
+      const raw = fs.readFileSync(tsconfigPath, 'utf-8');
+      const stripped = raw
+        .split('\n')
+        .filter((line) => !/^\s*(\/\/|\/\*)/.test(line))
+        .join('\n');
+      const tsconfig = JSON.parse(stripped);
+      const baseUrl: string | undefined = tsconfig?.compilerOptions?.baseUrl;
+      if (baseUrl && baseUrl !== './' && baseUrl !== '.') return baseUrl.replace(/\\/g, '/').replace(/\/$/, '');
+    } catch {
+      // ignora
+    }
+  }
+  return null;
+}
+
+// Retorna arquivos na mesma pasta que compartilham o mesmo prefixo base (.html, .scss, .css, .spec.ts, etc.)
+// Exclui o próprio .ts principal (já foi movido) e index.ts
+function getSiblingFiles(dir: string, baseName: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => {
+      if (f === `${baseName}.ts`) return false; // já movido
+      if (f === 'index.ts') return false;
+      return f.startsWith(baseName + '.');
+    })
+    .map((f) => path.join(dir, f));
 }
 
 function walkTs(dir: string): string[] {

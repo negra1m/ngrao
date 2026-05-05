@@ -1,8 +1,18 @@
 {
   "name": "ng-rao",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Angular Reactive Architecture Operator — applies standard folder structure to Angular 19+ projects",
-  "keywords": ["angular", "architecture", "scaffold", "boilerplate", "reactive", "folder-structure", "cli", "barrel", "standalone"],
+  "keywords": [
+    "angular",
+    "architecture",
+    "scaffold",
+    "boilerplate",
+    "reactive",
+    "folder-structure",
+    "cli",
+    "barrel",
+    "standalone"
+  ],
   "license": "MIT",
   "author": "Vinícius Negrão",
   "homepage": "https://github.com/negra1m/ngrao",
@@ -15,7 +25,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18"
   },

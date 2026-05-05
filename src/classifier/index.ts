@@ -9,8 +9,41 @@ export function collectFiles(cwd: string): AnalyzedFile[] {
 
   const tsFiles = walkTs(appRoot);
   const routedComponents = collectRoutedComponents(appRoot);
+  const aliasRoots = readAliasRoots(cwd);
 
-  return tsFiles.map((abs) => analyze(abs, cwd, appRoot, routedComponents));
+  return tsFiles.map((abs) => analyze(abs, cwd, appRoot, routedComponents, aliasRoots));
+}
+
+// Lê tsconfig*.json e extrai as raízes dos path aliases (ex: @core/* → src/app/core)
+function readAliasRoots(cwd: string): string[] {
+  const candidates = ['tsconfig.json', 'tsconfig.app.json', 'tsconfig.base.json'];
+  const roots = new Set<string>();
+
+  for (const candidate of candidates) {
+    const tsconfigPath = path.join(cwd, candidate);
+    if (!fs.existsSync(tsconfigPath)) continue;
+    try {
+      const raw = fs.readFileSync(tsconfigPath, 'utf-8');
+      // strip JSONC: remove apenas linhas que são inteiramente comentários
+      // (não toca em strings JSON que contenham /* ou // como glob patterns)
+      const stripped = raw
+        .split('\n')
+        .filter((line) => !/^\s*(\/\/|\/\*)/.test(line))
+        .join('\n');
+      const tsconfig = JSON.parse(stripped);
+      const paths: Record<string, string[]> = tsconfig?.compilerOptions?.paths ?? {};
+      for (const targets of Object.values(paths)) {
+        for (const target of targets) {
+          const root = target.replace(/\/\*$/, '').replace(/\\/g, '/');
+          if (root) roots.add(root);
+        }
+      }
+    } catch {
+      // ignora tsconfig malformado
+    }
+  }
+
+  return [...roots];
 }
 
 function walkTs(dir: string): string[] {
@@ -64,11 +97,16 @@ function analyze(
   abs: string,
   cwd: string,
   appRoot: string,
-  routedComponents: Set<string>
+  routedComponents: Set<string>,
+  aliasRoots: string[]
 ): AnalyzedFile {
   const filename = path.basename(abs);
   const relativePath = path.relative(cwd, abs).replace(/\\/g, '/');
-  const kind = detectKind(filename);
+
+  // se o arquivo está dentro de uma raiz coberta por alias, não mover
+  const coveredByAlias = aliasRoots.some((root) => relativePath.startsWith(root + '/'));
+  const kind = coveredByAlias ? 'other' : detectKind(filename);
+
   const content = fs.readFileSync(abs, 'utf-8');
   const scope = detectScope(kind, content, relativePath);
   const domain = detectDomain(filename, kind, relativePath);

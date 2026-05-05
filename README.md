@@ -26,10 +26,7 @@ ngrao apply
 
 ## O nome
 
-**ng-rao** tem duas leituras no mesmo nome:
-
-- **Negrão** — sobrenome do autor, Vinícius Negrão
-- **ng + RAO** — `ng` de Angular, `RAO` de **Reactive Architecture Operator**
+**ng-rao** vem de **ng + RAO** — `ng` de Angular, `RAO` de **Reactive Architecture Operator**.
 
 "Reactive" não é só referência ao Angular (RxJS, signals, reactive forms) — é a proposta da ferramenta: ela *reage* à estrutura que encontra, analisa, planeja e orquestra a reorganização sem você fazer nada manualmente.
 
@@ -204,7 +201,7 @@ npx ngrao apply
 
 ## Créditos
 
-Criado por **Vinícius Negrão** — [Few Company](https://fewcompany.com)
+Criado por **Vinícius Negrão** — [@negra1m](https://github.com/negra1m)
 
 ---
 
