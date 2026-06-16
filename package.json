@@ -1,6 +1,6 @@
 {
   "name": "ng-rao",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Angular Reactive Architecture Operator — applies standard folder structure to Angular 19+ projects",
   "keywords": [
     "angular",
