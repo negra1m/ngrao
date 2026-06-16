@@ -91,8 +91,9 @@ function rewriteImports(cwd: string, moveMap: Map<string, string>): void {
   const srcRoot = path.join(cwd, 'src');
   const allTs = walkTs(srcRoot);
 
-  // lê baseUrl do tsconfig para resolver imports absolutos sem prefixo 'src/'
+  // lê baseUrl e aliases do tsconfig para resolver imports absolutos
   const baseUrl = readBaseUrl(cwd);
+  const aliasPaths = readAliasPaths(cwd);
 
   // mapa inverso: novo caminho → caminho original (para arquivos que foram movidos)
   const reverseMap = new Map<string, string>();
@@ -118,6 +119,18 @@ function rewriteImports(cwd: string, moveMap: Map<string, string>): void {
         resolvedImport = path.resolve(effectiveFileDir, importPath);
       } else if (importPath.startsWith('src/')) {
         resolvedImport = path.join(cwd, importPath);
+      } else if (importPath.startsWith('@')) {
+        // import via path alias (ex: '@core/services/foo') — resolve usando mapa do tsconfig
+        let aliasResolved: string | null = null;
+        for (const [prefix, root] of aliasPaths) {
+          if (importPath === prefix || importPath.startsWith(prefix + '/')) {
+            const rest = importPath.slice(prefix.length).replace(/^\//, '');
+            aliasResolved = path.join(cwd, root, rest);
+            break;
+          }
+        }
+        if (!aliasResolved) return null;
+        resolvedImport = aliasResolved;
       } else if (baseUrl && !importPath.startsWith('@')) {
         // import absoluto com baseUrl customizado (ex: 'app/services/foo' com baseUrl: 'src/')
         resolvedImport = path.join(cwd, baseUrl, importPath);
@@ -195,6 +208,34 @@ function readBaseUrl(cwd: string): string | null {
     }
   }
   return null;
+}
+
+// Lê os path aliases do tsconfig — retorna mapa de prefixo → raiz no disco
+// ex: "@core/*" → "src/app/core"
+function readAliasPaths(cwd: string): Map<string, string> {
+  const result = new Map<string, string>();
+  const candidates = ['tsconfig.json', 'tsconfig.app.json', 'tsconfig.base.json'];
+  for (const candidate of candidates) {
+    const tsconfigPath = path.join(cwd, candidate);
+    if (!fs.existsSync(tsconfigPath)) continue;
+    try {
+      const raw = fs.readFileSync(tsconfigPath, 'utf-8');
+      const stripped = raw
+        .split('\n')
+        .filter((line) => !/^\s*(\/\/|\/\*)/.test(line))
+        .join('\n');
+      const tsconfig = JSON.parse(stripped);
+      const paths: Record<string, string[]> = tsconfig?.compilerOptions?.paths ?? {};
+      for (const [alias, targets] of Object.entries(paths)) {
+        const prefix = alias.replace(/\/\*$/, '');
+        const root = (targets[0] ?? '').replace(/\/\*$/, '').replace(/\\/g, '/');
+        if (prefix && root) result.set(prefix, root);
+      }
+    } catch {
+      // ignora
+    }
+  }
+  return result;
 }
 
 // Retorna arquivos na mesma pasta que compartilham o mesmo prefixo base (.html, .scss, .css, .spec.ts, etc.)
