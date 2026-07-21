@@ -1,4 +1,5 @@
 import readline from 'readline';
+import { spawnSync } from 'child_process';
 import { isAngularProject } from '../detector/index.js';
 import { collectFiles } from '../classifier/index.js';
 import { buildPlan } from '../architect/index.js';
@@ -33,8 +34,12 @@ export async function applyCommand(options: ApplyOptions): Promise<void> {
 
   logger.log(`${moves} moves, ${creates} pastas a criar, ${barrels} barrels a gerar.`);
 
+  if (hasUncommittedChanges(cwd)) {
+    logger.warn('working tree do git com alterações não commitadas — recomendado commitar antes de aplicar.');
+  }
+
   if (!options.yes) {
-    const confirmed = await confirm('Aplicar? (Enter para confirmar, Ctrl+C para cancelar) ');
+    const confirmed = await confirm('Aplicar? (Enter/s para confirmar, n para cancelar) ');
     if (!confirmed) {
       logger.log('Cancelado.');
       return;
@@ -49,12 +54,27 @@ export async function applyCommand(options: ApplyOptions): Promise<void> {
   );
 }
 
+// Enter, y/yes, s/sim confirmam; qualquer outra resposta cancela
+export function isConfirmation(answer: string): boolean {
+  const a = answer.trim().toLowerCase();
+  return a === '' || a === 'y' || a === 'yes' || a === 's' || a === 'sim';
+}
+
+function hasUncommittedChanges(cwd: string): boolean {
+  try {
+    const result = spawnSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf-8' });
+    return result.status === 0 && result.stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function confirm(question: string): Promise<boolean> {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(question, () => {
+    rl.question(question, (answer) => {
       rl.close();
-      resolve(true);
+      resolve(isConfirmation(answer));
     });
   });
 }

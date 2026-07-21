@@ -1,6 +1,8 @@
 import path from 'path';
 import type { AnalyzedFile, ActionPlan, Action, TemplateEntry } from '../types.js';
 import { TEMPLATE } from './template.js';
+import { scanExistingStructure } from '../detector/index.js';
+import { barrelPlaceholder } from '../utils/barrel.js';
 
 export { TEMPLATE };
 
@@ -8,6 +10,9 @@ export function buildPlan(files: AnalyzedFile[], cwd: string): ActionPlan {
   const plan: ActionPlan = [];
   const dirsToCreate = new Set<string>();
   const barrelsToCreate = new Map<string, string>(); // dir → barrel path
+
+  // paths já existentes no disco — evita ações fantasma em projeto conforme
+  const existing = new Set(scanExistingStructure(cwd).map((e) => e.path));
 
   for (const file of files) {
     const dest = resolveDestination(file);
@@ -23,27 +28,28 @@ export function buildPlan(files: AnalyzedFile[], cwd: string): ActionPlan {
       // já está no lugar certo
       plan.push({ type: 'skip', to: destPath });
     } else {
-      dirsToCreate.add(destDir);
+      if (!existing.has(destDir)) dirsToCreate.add(destDir);
       plan.push({ type: 'move', from: currentPath, to: destPath });
     }
 
-    // registra barrel para a pasta de destino se for necessário
+    // registra barrel para a pasta de destino se for necessário e ainda não existir
     if (dest.needsBarrel) {
       const barrelPath = path.posix.join(destDir, 'index.ts');
-      if (!barrelsToCreate.has(destDir)) {
+      if (!existing.has(barrelPath) && !barrelsToCreate.has(destDir)) {
         barrelsToCreate.set(destDir, barrelPath);
       }
     }
   }
 
   // adiciona criação de pastas da estrutura base que ainda não existem
-  for (const entry of TEMPLATE) {
+  for (const entry of getMissingEntries(existing)) {
     dirsToCreate.add(entry.path);
-    if (entry.needsBarrel) {
-      const barrelPath = `${entry.path}/index.ts`;
-      if (!barrelsToCreate.has(entry.path)) {
-        barrelsToCreate.set(entry.path, barrelPath);
-      }
+  }
+  for (const entry of TEMPLATE) {
+    if (!entry.needsBarrel) continue;
+    const barrelPath = `${entry.path}/index.ts`;
+    if (!existing.has(barrelPath) && !barrelsToCreate.has(entry.path)) {
+      barrelsToCreate.set(entry.path, barrelPath);
     }
   }
 
@@ -56,7 +62,7 @@ export function buildPlan(files: AnalyzedFile[], cwd: string): ActionPlan {
   const barrelActions: Action[] = [...barrelsToCreate.values()].sort().map((b) => ({
     type: 'create_barrel',
     to: b,
-    content: barrelComment(b),
+    content: barrelPlaceholder(path.posix.dirname(b)),
   }));
 
   return [...dirActions, ...plan, ...barrelActions];
@@ -129,17 +135,6 @@ function resolveDestination(
 
 function stripSuffix(filename: string, suffix: string): string {
   return filename.endsWith(suffix) ? filename.slice(0, -suffix.length) : filename;
-}
-
-function barrelComment(barrelPath: string): string {
-  const dir = path.posix.dirname(barrelPath);
-  return [
-    '// barrel — re-exporte os arquivos desta pasta aqui',
-    '// exemplo:',
-    `//   export * from './<nome-do-arquivo>';`,
-    `// pasta: ${dir}`,
-    '',
-  ].join('\n');
 }
 
 export function getMissingEntries(
