@@ -14,16 +14,35 @@ export function checkCommand(): void {
   const files = collectFiles(cwd);
   const plan = buildPlan(files, cwd);
 
-  const problems = plan.filter((a) => a.type === 'move');
+  const moves = plan.filter((a) => a.type === 'move');
+  const missingDirs = plan.filter((a) => a.type === 'create_dir');
+  const missingBarrels = plan.filter((a) => a.type === 'create_barrel');
 
-  if (problems.length === 0) {
+  if (moves.length === 0 && missingDirs.length === 0 && missingBarrels.length === 0) {
     logger.success('Projeto conforme o padrão.');
     process.exit(0);
   }
 
-  logger.warn(`${problems.length} arquivo(s) fora do lugar:`);
-  for (const p of problems) {
-    console.log(`  ${p.from} → ${p.to}`);
+  if (moves.length > 0) {
+    logger.warn(`${moves.length} arquivo(s) fora do lugar:`);
+    for (const p of moves) {
+      console.log(`  ${p.from} → ${p.to}`);
+    }
   }
+
+  if (missingDirs.length > 0) {
+    logger.warn(`${missingDirs.length} pasta(s) da estrutura base ausente(s):`);
+    for (const d of missingDirs) {
+      console.log(`  ${d.to}`);
+    }
+  }
+
+  if (missingBarrels.length > 0) {
+    logger.warn(`${missingBarrels.length} barrel(s) ausente(s):`);
+    for (const b of missingBarrels) {
+      console.log(`  ${b.to}`);
+    }
+  }
+
   process.exit(1);
 }

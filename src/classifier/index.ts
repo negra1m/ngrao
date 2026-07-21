@@ -1,104 +1,74 @@
 import fs from 'fs';
 import path from 'path';
 import type { AnalyzedFile, FileKind, FileScope, ComponentRole } from '../types.js';
+import { readAliasRoots } from '../utils/tsconfig.js';
+import { walkFiles } from '../utils/walk.js';
 
-// Coleta todos os .ts relevantes em src/app (exceto spec, module, routing, playground)
+// Coleta todos os .ts relevantes em src/app (exceto spec, module, routing, routes, playground)
 export function collectFiles(cwd: string): AnalyzedFile[] {
   const appRoot = path.join(cwd, 'src', 'app');
   if (!fs.existsSync(appRoot)) return [];
 
-  const tsFiles = walkTs(appRoot);
+  const tsFiles = walkFiles(appRoot, isCollectible);
   const routedComponents = collectRoutedComponents(appRoot);
   const aliasRoots = readAliasRoots(cwd);
+  const moduleNames = readModuleNames(appRoot);
 
-  return tsFiles.map((abs) => analyze(abs, cwd, appRoot, routedComponents, aliasRoots));
+  return tsFiles.map((abs) => analyze(abs, cwd, routedComponents, aliasRoots, moduleNames));
 }
 
-// Lê tsconfig*.json e extrai as raízes dos path aliases (ex: @core/* → src/app/core)
-function readAliasRoots(cwd: string): string[] {
-  const candidates = ['tsconfig.json', 'tsconfig.app.json', 'tsconfig.base.json'];
-  const roots = new Set<string>();
-
-  for (const candidate of candidates) {
-    const tsconfigPath = path.join(cwd, candidate);
-    if (!fs.existsSync(tsconfigPath)) continue;
-    try {
-      const raw = fs.readFileSync(tsconfigPath, 'utf-8');
-      // strip JSONC: remove apenas linhas que são inteiramente comentários
-      // (não toca em strings JSON que contenham /* ou // como glob patterns)
-      const stripped = raw
-        .split('\n')
-        .filter((line) => !/^\s*(\/\/|\/\*)/.test(line))
-        .join('\n');
-      const tsconfig = JSON.parse(stripped);
-      const paths: Record<string, string[]> = tsconfig?.compilerOptions?.paths ?? {};
-      for (const targets of Object.values(paths)) {
-        for (const target of targets) {
-          const root = target.replace(/\/\*$/, '').replace(/\\/g, '/');
-          if (root) roots.add(root);
-        }
-      }
-    } catch {
-      // ignora tsconfig malformado
-    }
-  }
-
-  return [...roots];
+function isCollectible(name: string): boolean {
+  return (
+    name.endsWith('.ts') &&
+    !name.startsWith('._') &&               // ignorar arquivos fantasma do macOS
+    !name.endsWith('.spec.ts') &&
+    !name.endsWith('.module.ts') &&
+    !name.endsWith('-routing.module.ts') &&
+    !name.endsWith('.routes.ts') &&
+    !name.endsWith('.sandbox.ts') &&
+    name !== 'index.ts'
+  );
 }
 
-function walkTs(dir: string): string[] {
-  const results: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...walkTs(full));
-    } else if (
-      entry.name.endsWith('.ts') &&
-      !entry.name.startsWith('._') &&        // ignorar arquivos fantasma do macOS
-      !entry.name.endsWith('.spec.ts') &&
-      !entry.name.endsWith('.module.ts') &&
-      !entry.name.endsWith('-routing.module.ts') &&
-      !entry.name.endsWith('.sandbox.ts') &&
-      entry.name !== 'index.ts'
-    ) {
-      results.push(full);
-    }
-  }
-  return results;
+// Nomes das features já existentes em src/app/modules — usados no longest-match de domain
+function readModuleNames(appRoot: string): Set<string> {
+  const modulesDir = path.join(appRoot, 'modules');
+  if (!fs.existsSync(modulesDir)) return new Set();
+  return new Set(
+    fs.readdirSync(modulesDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+  );
 }
 
-// Lê todos os *-routing.module.ts e coleta os seletores de component que aparecem em `component:` dentro de Routes
+// Lê arquivos de rotas (NgModule e standalone) e coleta os components roteáveis:
+//   component: FooComponent                                → eager (NgModule ou standalone)
+//   loadComponent: () => import('...').then(m => m.FooComponent)  → lazy standalone
 function collectRoutedComponents(appRoot: string): Set<string> {
   const routed = new Set<string>();
-  const routingFiles = walkRoutingFiles(appRoot);
+  const routeFiles = walkFiles(
+    appRoot,
+    (name) => name.endsWith('-routing.module.ts') || name.endsWith('.routes.ts')
+  );
 
-  for (const rf of routingFiles) {
+  for (const rf of routeFiles) {
     const content = fs.readFileSync(rf, 'utf-8');
-    // captura "component: FooBarComponent" em qualquer linha
-    const matches = content.matchAll(/component:\s*(\w+Component)/g);
-    for (const m of matches) {
+    for (const m of content.matchAll(/component:\s*(\w+Component)/g)) {
+      routed.add(m[1]);
+    }
+    for (const m of content.matchAll(/\.then\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.(\w+Component)\s*\)/g)) {
       routed.add(m[1]);
     }
   }
   return routed;
 }
 
-function walkRoutingFiles(dir: string): string[] {
-  const results: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) results.push(...walkRoutingFiles(full));
-    else if (entry.name.endsWith('-routing.module.ts')) results.push(full);
-  }
-  return results;
-}
-
 function analyze(
   abs: string,
   cwd: string,
-  appRoot: string,
   routedComponents: Set<string>,
-  aliasRoots: string[]
+  aliasRoots: string[],
+  moduleNames: Set<string>
 ): AnalyzedFile {
   const filename = path.basename(abs);
   const relativePath = path.relative(cwd, abs).replace(/\\/g, '/');
@@ -109,7 +79,7 @@ function analyze(
 
   const content = fs.readFileSync(abs, 'utf-8');
   const scope = detectScope(kind, content, relativePath);
-  const domain = detectDomain(filename, kind, relativePath);
+  const domain = detectDomain(filename, kind, relativePath, moduleNames);
   const role = kind === 'component' ? detectRole(content, routedComponents) : undefined;
 
   return { absolutePath: abs, relativePath, filename, kind, scope, domain, role };
@@ -127,6 +97,11 @@ function detectKind(filename: string): FileKind {
   return 'other';
 }
 
+// Ancorado em src/app/shared/ — não casa modules/[x]/shared/
+function isInShared(relativePath: string): boolean {
+  return relativePath.startsWith('src/app/shared/');
+}
+
 function detectScope(kind: FileKind, content: string, relativePath: string): FileScope {
   // guards e interceptors são sempre core
   if (kind === 'guard' || kind === 'interceptor') return 'core';
@@ -138,19 +113,19 @@ function detectScope(kind: FileKind, content: string, relativePath: string): Fil
   if (kind === 'service') {
     if (/providedIn\s*:\s*['"]root['"]/.test(content)) return 'core';
     // service dentro de shared/components = shared
-    if (relativePath.includes('shared/')) return 'shared';
+    if (isInShared(relativePath)) return 'shared';
     return 'feature';
   }
 
   // models e mocks: se já estão em shared/ = shared, senão = core (globais)
   if (kind === 'model' || kind === 'mock') {
-    if (relativePath.includes('shared/')) return 'shared';
+    if (isInShared(relativePath)) return 'shared';
     return 'core';
   }
 
   // components: app.component = skip, shared/ = shared, modules/ = feature
   if (kind === 'component') {
-    if (relativePath.includes('shared/')) return 'shared';
+    if (isInShared(relativePath)) return 'shared';
     return 'feature';
   }
 
@@ -159,7 +134,12 @@ function detectScope(kind: FileKind, content: string, relativePath: string): Fil
 
 // Extrai o domínio do arquivo.
 // Prioridade: path estruturado (modules/[feature]/) > nome do arquivo.
-function detectDomain(filename: string, kind: FileKind, relativePath: string): string {
+function detectDomain(
+  filename: string,
+  kind: FileKind,
+  relativePath: string,
+  moduleNames: Set<string>
+): string {
   // se já está dentro de modules/[feature]/, usa o nome da feature como domain
   const modulesMatch = relativePath.match(/src\/app\/modules\/([^/]+)\//);
   if (modulesMatch) return modulesMatch[1];
@@ -168,12 +148,17 @@ function detectDomain(filename: string, kind: FileKind, relativePath: string): s
   const coreMatch = relativePath.match(/src\/app\/core\/(?:services|models|mocks|guards|interceptors)\/([^/]+)\//);
   if (coreMatch) return coreMatch[1];
 
-  // fallback: primeiro segmento do nome do arquivo
-  // ex: alarms-creation.service.ts → alarms
-  // ex: performance-status.service.ts → performance
+  // fallback: segmentos do nome do arquivo.
+  // Prefere o prefixo mais longo que corresponda a um módulo já existente:
+  //   user-profile.service.ts + modules/user-profile/ → user-profile
+  //   alarms-creation.service.ts → alarms
   const suffix = kindSuffix(kind);
   const base = filename.replace(suffix, '');
   const parts = base.split('-');
+  for (let i = parts.length; i > 1; i--) {
+    const candidate = parts.slice(0, i).join('-');
+    if (moduleNames.has(candidate)) return candidate;
+  }
   return parts[0] ?? base;
 }
 

@@ -11,7 +11,7 @@
   <a href="https://www.npmjs.com/package/ng-rao"><img src="https://img.shields.io/npm/dm/ng-rao?color=cb3837" alt="npm downloads"/></a>
   <img src="https://img.shields.io/badge/Angular-19%2B-dd0031?logo=angular" alt="Angular 19+"/>
   <img src="https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js" alt="Node 18+"/>
-  <img src="https://img.shields.io/badge/tests-95%20passing-brightgreen" alt="95 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-122%20passing-brightgreen" alt="122 tests passing"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"/>
 </p>
 
@@ -75,7 +75,7 @@ src/app/
     └── pipes/           ← index.ts gerado
 ```
 
-Os `index.ts` gerados são barrels com comentário de uso. **Nunca sobrescrevem nada que já exista.**
+Os `index.ts` gerados re-exportam os arquivos existentes na pasta no momento da criação (pastas vazias recebem um placeholder comentado). **Nunca sobrescrevem nada que já exista.**
 
 ---
 
@@ -108,7 +108,7 @@ ngrao check
 
 ### `ngrao barrel <path>`
 
-Gera um `index.ts` barrel para uma pasta específica. Não sobrescreve se já existir.
+Gera um `index.ts` barrel para uma pasta específica, re-exportando os arquivos `.ts` existentes nela. Não sobrescreve se já existir.
 
 ```bash
 ngrao barrel src/app/core/guards
@@ -138,7 +138,7 @@ Varre `src/app/` recursivamente e determina três atributos por arquivo:
 3. Fallback: primeiro segmento do nome (`alarms-list.service.ts` → `alarms`)
 
 **`role`** (só para components):
-Lê todos os `*-routing.module.ts`. Se a classe aparece em `component: XxxComponent`, é `page`. Senão, `component`.
+Lê todos os `*-routing.module.ts` e `*.routes.ts` (incluindo `app.routes.ts` standalone). Se a classe aparece em `component: XxxComponent` ou em `loadComponent: () => import('...').then(m => m.XxxComponent)`, é `page`. Senão, `component`.
 
 ### 2 — Planejamento
 
@@ -158,13 +158,14 @@ Aplica o plano e reescreve os imports relativos em **todos** os `.ts` do projeto
 - Arquivos dentro de `shared/` (já estão no lugar)
 - Arquivos dentro de `sub-components/`
 - `index.ts` (barrels)
-- `*.spec.ts` `*.module.ts` `*-routing.module.ts` `*.sandbox.ts`
+- `*.spec.ts` `*.module.ts` `*-routing.module.ts` `*.routes.ts` `*.sandbox.ts`
+- Arquivos dentro de raízes cobertas por path alias no `tsconfig` (ex: `@core/*` → `src/app/core/*`) — o alias indica estrutura intencional
 
 ---
 
 ## Testado em projetos reais
 
-Antes da publicação, `ngrao preview` foi rodado contra **39 projetos Angular públicos no GitHub** — de 3 a 326 arquivos `.ts`. Zero crashes.
+Antes da publicação, `ngrao preview` foi rodado contra **258 projetos Angular públicos no GitHub** (238 analisados com sucesso) — de 3 a 8.864 arquivos `.ts`. Zero crashes.
 
 | Projeto | Arquivos | Moves |
 |---------|----------|-------|

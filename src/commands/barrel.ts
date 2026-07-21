@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../logger/index.js';
+import { barrelPlaceholder, buildBarrelContent } from '../utils/barrel.js';
 
 export function barrelCommand(targetPath?: string): void {
   const cwd = process.cwd();
@@ -24,16 +25,9 @@ export function barrelCommand(targetPath?: string): void {
     return;
   }
 
-  const dir = folderPath.replace(/\\/g, '/');
-  const content = [
-    '// barrel — re-exporte os arquivos desta pasta aqui',
-    '// exemplo:',
-    `//   export * from './<nome-do-arquivo>';`,
-    `// pasta: ${dir}`,
-    '',
-  ].join('\n');
+  const dirPosix = folderPath.replace(/\\/g, '/');
+  const content = buildBarrelContent(folderPath, barrelPlaceholder(dirPosix));
 
-  fs.mkdirSync(path.dirname(indexPath), { recursive: true });
   fs.writeFileSync(indexPath, content, 'utf-8');
   logger.barrel(relative);
 }
