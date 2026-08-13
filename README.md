@@ -11,15 +11,15 @@
   <a href="https://www.npmjs.com/package/ng-rao"><img src="https://img.shields.io/npm/dm/ng-rao?color=cb3837" alt="npm downloads"/></a>
   <img src="https://img.shields.io/badge/Angular-19%2B-dd0031?logo=angular" alt="Angular 19+"/>
   <img src="https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js" alt="Node 18+"/>
-  <img src="https://img.shields.io/badge/tests-153%20passing-brightgreen" alt="153 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-169%20passing-brightgreen" alt="169 tests passing"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"/>
 </p>
 
 ---
 
 ```bash
-npm i -g ng-rao
-ngrao apply
+npm i -D ng-rao
+npx ngrao apply
 ```
 
 ---
@@ -144,7 +144,7 @@ src/app/
 
 ### `ngrao apply`
 
-Executa a reorganização. Pede confirmação antes de mover.
+Executa a reorganização. Pede confirmação antes de mover, e lista tudo que vai fazer — incluindo os scripts de [validação contínua](#validação-contínua) que serão adicionados ao `package.json`.
 
 ```bash
 ngrao apply                    # modo interativo
@@ -177,6 +177,45 @@ Gera um `index.ts` barrel para uma pasta específica, re-exportando os arquivos 
 ```bash
 ngrao barrel src/app/core/guards
 ```
+
+---
+
+## Validação contínua
+
+Organizar uma vez não resolve — projeto volta a bagunçar no PR seguinte. Por isso o `apply` **também deixa a validação plugada no `package.json`**:
+
+```json
+{
+  "scripts": {
+    "ngrao:check": "npx ng-rao check --feature-first",
+    "build": "npx ng-rao check --feature-first && ng build"
+  }
+}
+```
+
+- O script `ngrao:check` é sempre adicionado.
+- O `build` existente é encadeado — **build quebra se a arquitetura divergir**. Se você não quer isso, remova o encadeamento e mantenha só o `ngrao:check`.
+- Nada é sobrescrito e nada é duplicado: se o check já estiver ali, o `apply` não mexe. Rodar duas vezes não muda nada na segunda.
+- Usa `npx` de propósito, e não uma `devDependency` nova: adicionar dependência sem rodar `npm install` deixaria o `package-lock.json` fora de sincronia e quebraria `npm ci`.
+
+### Em CI
+
+```yaml
+name: architecture
+on: [push, pull_request]
+
+jobs:
+  ngrao:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npx ng-rao check --feature-first
+```
+
+`check` sai com código `1` quando há arquivo fora do lugar — o job falha e o PR fica marcado.
 
 ---
 
@@ -246,12 +285,13 @@ Detalhes completos em [HOW_WE_TESTED.md](https://github.com/negra1m/ngrao/blob/m
 ## Instalação
 
 ```bash
-# global
-npm i -g ng-rao
-
-# ou como devDependency
+# como devDependency do projeto (recomendado — permite rodar o check em CI)
 npm i -D ng-rao
 npx ngrao apply
+
+# ou global
+npm i -g ng-rao
+ngrao apply
 ```
 
 ---

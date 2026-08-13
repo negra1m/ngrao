@@ -74,8 +74,10 @@ export function readTsconfigs(cwd: string, candidates: string[] = CANDIDATES): T
     const tsconfigPath = path.join(cwd, candidate);
     if (!fs.existsSync(tsconfigPath)) continue;
     try {
+      // tsconfig gravado por editor Windows pode vir com BOM — JSON.parse não aceita
       const raw = fs.readFileSync(tsconfigPath, 'utf-8');
-      results.push(JSON.parse(stripJsonComments(raw)) as TsconfigLike);
+      const withoutBom = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+      results.push(JSON.parse(stripJsonComments(withoutBom)) as TsconfigLike);
     } catch {
       logger.warn(
         `não foi possível parsear ${candidate} — baseUrl/paths deste arquivo serão ignorados. ` +

@@ -9,4 +9,5 @@ export const logger = {
   barrel: (p: string) => console.log(`  [barrel] ${p}`),
   skip: (p: string) => console.log(`  [skip]   ${p}`),
   move: (from: string, to: string) => console.log(`  [move]   ${from} → ${to}`),
+  script: (name: string, value: string) => console.log(`  [script] ${name}: ${value}`),
 };

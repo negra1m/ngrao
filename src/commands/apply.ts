@@ -6,6 +6,7 @@ import { buildPlan } from '../architect/index.js';
 import { execute } from '../writer/index.js';
 import { logger } from '../logger/index.js';
 import { resolveMode, type LayoutOptions } from './options.js';
+import { planCheckScripts, applyCheckScripts } from '../integrator/index.js';
 
 interface ApplyOptions extends LayoutOptions {
   yes?: boolean;
@@ -28,17 +29,27 @@ export async function applyCommand(options: ApplyOptions): Promise<void> {
   const plan = buildPlan(files, cwd, mode);
 
   const actionable = plan.filter((a) => a.type !== 'skip');
+  // validação de arquitetura no package.json — mantém o projeto conforme depois do apply
+  const integration = planCheckScripts(cwd, mode);
 
-  if (actionable.length === 0) {
+  if (actionable.length === 0 && integration.changes.length === 0) {
     logger.success('Projeto já está conforme o padrão. Nada a fazer.');
     return;
   }
 
-  const moves = actionable.filter((a) => a.type === 'move').length;
-  const creates = actionable.filter((a) => a.type === 'create_dir').length;
-  const barrels = actionable.filter((a) => a.type === 'create_barrel').length;
+  if (actionable.length > 0) {
+    const moves = actionable.filter((a) => a.type === 'move').length;
+    const creates = actionable.filter((a) => a.type === 'create_dir').length;
+    const barrels = actionable.filter((a) => a.type === 'create_barrel').length;
+    logger.log(`${moves} moves, ${creates} pastas a criar, ${barrels} barrels a gerar.`);
+  }
 
-  logger.log(`${moves} moves, ${creates} pastas a criar, ${barrels} barrels a gerar.`);
+  if (integration.changes.length > 0) {
+    logger.log(`${integration.changes.length} script(s) de validação a adicionar no package.json:`);
+    for (const change of integration.changes) {
+      logger.script(change.script, change.to);
+    }
+  }
 
   if (hasUncommittedChanges(cwd)) {
     logger.warn('working tree do git com alterações não commitadas — recomendado commitar antes de aplicar.');
@@ -53,6 +64,7 @@ export async function applyCommand(options: ApplyOptions): Promise<void> {
   }
 
   const report = execute(plan, cwd, { pruneEmptyDirs: mode === 'feature-first' });
+  applyCheckScripts(cwd, integration);
 
   console.log('');
   logger.success(
@@ -60,6 +72,9 @@ export async function applyCommand(options: ApplyOptions): Promise<void> {
   );
   if (report.pruned > 0) {
     logger.log(`${report.pruned} pasta(s) vazia(s) removida(s).`);
+  }
+  if (integration.changes.length > 0) {
+    logger.log('package.json: rode "npm run ngrao:check" ou o build para validar a arquitetura.');
   }
 }
 
