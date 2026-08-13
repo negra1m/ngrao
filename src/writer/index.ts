@@ -6,8 +6,14 @@ import { readAliasPaths, readBaseUrl } from '../utils/tsconfig.js';
 import { walkFiles } from '../utils/walk.js';
 import { buildBarrelContent } from '../utils/barrel.js';
 
-export function execute(plan: ActionPlan, cwd: string): Report {
-  const report: Report = { moved: 0, created: 0, barrels: 0, skipped: 0 };
+export interface ExecuteOptions {
+  // remove as pastas de origem que ficaram vazias após os moves
+  // (usado no feature-first para não deixar core/ e shared/ como cascas vazias)
+  pruneEmptyDirs?: boolean;
+}
+
+export function execute(plan: ActionPlan, cwd: string, options: ExecuteOptions = {}): Report {
+  const report: Report = { moved: 0, created: 0, barrels: 0, skipped: 0, pruned: 0 };
 
   // mapa de moves: caminho antigo → novo (para reescrever imports depois)
   const moveMap = new Map<string, string>();
@@ -95,9 +101,39 @@ export function execute(plan: ActionPlan, cwd: string): Report {
     rewriteImports(cwd, moveMap);
   }
 
+  if (options.pruneEmptyDirs && moveMap.size > 0) {
+    report.pruned = pruneEmptyDirs(cwd, [...moveMap.keys()]);
+  }
+
   if (failure) throw failure;
 
   return report;
+}
+
+// Remove as pastas de origem dos moves que ficaram vazias, subindo a árvore
+// até src/app (nunca remove src/app nem nada fora dele).
+function pruneEmptyDirs(cwd: string, movedFrom: string[]): number {
+  const appRoot = path.resolve(cwd, 'src', 'app');
+  let removed = 0;
+
+  const dirs = new Set(movedFrom.map((rel) => path.resolve(cwd, path.dirname(rel))));
+
+  for (const start of dirs) {
+    let dir = start;
+    while (dir.startsWith(appRoot + path.sep)) {
+      if (!fs.existsSync(dir)) {
+        dir = path.dirname(dir);
+        continue;
+      }
+      if (fs.readdirSync(dir).length > 0) break;
+      fs.rmdirSync(dir);
+      logger.log(`pasta vazia removida: ${path.relative(cwd, dir).replace(/\\/g, '/')}`);
+      removed++;
+      dir = path.dirname(dir);
+    }
+  }
+
+  return removed;
 }
 
 type ImportStyle = 'relative' | 'srcAbs' | 'alias' | 'baseUrl';

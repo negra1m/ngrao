@@ -1,12 +1,19 @@
 import path from 'path';
-import type { AnalyzedFile, ActionPlan, Action, TemplateEntry } from '../types.js';
+import type { AnalyzedFile, ActionPlan, Action, TemplateEntry, LayoutMode } from '../types.js';
 import { TEMPLATE } from './template.js';
 import { scanExistingStructure } from '../detector/index.js';
 import { barrelPlaceholder } from '../utils/barrel.js';
+import { readFeatureDirs } from '../utils/features.js';
+import { collectFeatureNames, resolveFeatureFirstDestination } from './feature-first.js';
 
 export { TEMPLATE };
+export * from './feature-first.js';
 
-export function buildPlan(files: AnalyzedFile[], cwd: string): ActionPlan {
+export function buildPlan(
+  files: AnalyzedFile[],
+  cwd: string,
+  mode: LayoutMode = 'classic'
+): ActionPlan {
   const plan: ActionPlan = [];
   const dirsToCreate = new Set<string>();
   const barrelsToCreate = new Map<string, string>(); // dir → barrel path
@@ -14,8 +21,15 @@ export function buildPlan(files: AnalyzedFile[], cwd: string): ActionPlan {
   // paths já existentes no disco — evita ações fantasma em projeto conforme
   const existing = new Set(scanExistingStructure(cwd).map((e) => e.path));
 
+  const featureFirst = mode === 'feature-first';
+  const features = featureFirst
+    ? collectFeatureNames(files, readFeatureDirs(path.join(cwd, 'src', 'app')))
+    : new Set<string>();
+
   for (const file of files) {
-    const dest = resolveDestination(file);
+    const dest = featureFirst
+      ? resolveFeatureFirstDestination(file, features)
+      : resolveDestination(file);
     if (!dest) continue; // app.component, unknown — não mover
 
     const destDir = path.posix.join('src', 'app', dest.dir);
@@ -41,15 +55,19 @@ export function buildPlan(files: AnalyzedFile[], cwd: string): ActionPlan {
     }
   }
 
-  // adiciona criação de pastas da estrutura base que ainda não existem
-  for (const entry of getMissingEntries(existing)) {
-    dirsToCreate.add(entry.path);
-  }
-  for (const entry of TEMPLATE) {
-    if (!entry.needsBarrel) continue;
-    const barrelPath = `${entry.path}/index.ts`;
-    if (!existing.has(barrelPath) && !barrelsToCreate.has(entry.path)) {
-      barrelsToCreate.set(entry.path, barrelPath);
+  // estrutura base e barrels são exclusivos do modo clássico —
+  // feature-first só cria as pastas que os moves exigem
+  if (!featureFirst) {
+    // adiciona criação de pastas da estrutura base que ainda não existem
+    for (const entry of getMissingEntries(existing)) {
+      dirsToCreate.add(entry.path);
+    }
+    for (const entry of TEMPLATE) {
+      if (!entry.needsBarrel) continue;
+      const barrelPath = `${entry.path}/index.ts`;
+      if (!existing.has(barrelPath) && !barrelsToCreate.has(entry.path)) {
+        barrelsToCreate.set(entry.path, barrelPath);
+      }
     }
   }
 

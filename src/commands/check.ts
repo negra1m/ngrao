@@ -2,8 +2,9 @@ import { isAngularProject } from '../detector/index.js';
 import { collectFiles } from '../classifier/index.js';
 import { buildPlan } from '../architect/index.js';
 import { logger } from '../logger/index.js';
+import { resolveMode, type LayoutOptions } from './options.js';
 
-export function checkCommand(): void {
+export function checkCommand(options?: LayoutOptions): void {
   const cwd = process.cwd();
 
   if (!isAngularProject(cwd)) {
@@ -11,8 +12,9 @@ export function checkCommand(): void {
     process.exit(1);
   }
 
-  const files = collectFiles(cwd);
-  const plan = buildPlan(files, cwd);
+  const mode = resolveMode(options);
+  const files = collectFiles(cwd, mode);
+  const plan = buildPlan(files, cwd, mode);
 
   const moves = plan.filter((a) => a.type === 'move');
   const missingDirs = plan.filter((a) => a.type === 'create_dir');

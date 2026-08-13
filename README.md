@@ -11,7 +11,7 @@
   <a href="https://www.npmjs.com/package/ng-rao"><img src="https://img.shields.io/npm/dm/ng-rao?color=cb3837" alt="npm downloads"/></a>
   <img src="https://img.shields.io/badge/Angular-19%2B-dd0031?logo=angular" alt="Angular 19+"/>
   <img src="https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js" alt="Node 18+"/>
-  <img src="https://img.shields.io/badge/tests-122%20passing-brightgreen" alt="122 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-153%20passing-brightgreen" alt="153 tests passing"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"/>
 </p>
 
@@ -79,6 +79,67 @@ Os `index.ts` gerados re-exportam os arquivos existentes na pasta no momento da 
 
 ---
 
+## Modo feature-first (v1.2)
+
+Escolhido por votação da comunidade. Abole `core/` e `shared/` e gera uma estrutura flat, alinhada ao Angular standalone moderno: **a feature é a unidade de organização, não o tipo do arquivo.**
+
+```bash
+ngrao preview --feature-first
+ngrao apply --feature-first
+ngrao check --feature-first
+```
+
+Sem a flag, o comportamento é exatamente o da v1.1 — nada muda para quem já usa.
+
+### Estrutura gerada
+
+```
+src/app/
+├── app.component.ts
+├── app.routes.ts
+├── alarms/                        ← feature
+│   ├── alarms.component.ts        ← page roteável, na raiz da feature
+│   ├── alarms.service.ts
+│   ├── alarms.model.ts
+│   └── alarm-card/                ← component da feature
+│       └── alarm-card.component.ts
+├── login/
+│   └── login.component.ts
+├── components/                    ← componentes reutilizáveis (ex-shared)
+│   └── search-box/
+├── guards/
+├── interceptors/
+├── services/                      ← só o que não tem feature dona
+├── models/
+├── mocks/
+├── normalizers/
+└── pipes/
+```
+
+### Destinos
+
+| Tipo | Destino |
+|------|---------|
+| Component page (roteável) | `src/app/[feature]/` |
+| Component de feature | `src/app/[feature]/[nome]/` |
+| Component reutilizável (ex-`shared/`) | `src/app/components/[nome]/` |
+| Service / Model / Mock / Normalizer **com feature dona** | `src/app/[feature]/` |
+| Service / Model / Mock / Normalizer **sem feature dona** | `src/app/services/` `models/` `mocks/` `normalizers/` |
+| Guard | `src/app/guards/` |
+| Interceptor | `src/app/interceptors/` |
+| Pipe | `src/app/pipes/` |
+
+### Diferenças em relação ao modo clássico
+
+- **`providedIn: 'root'` não decide nada.** É só como o Angular registra o provider — o que decide é existir uma feature com o mesmo domínio. `alarms.service.ts` mora em `alarms/` mesmo sendo root; `api.service.ts`, sem feature `api`, vai para `services/`.
+- **Não gera barrels.** Imports apontam direto para o arquivo — o style guide moderno desencoraja `index.ts` (import circular e tree-shaking pior). O comando `ngrao barrel <path>` continua disponível para uso manual.
+- **Não respeita path alias.** No clássico, `@core/*` sinaliza estrutura intencional e o conteúdo é preservado. No feature-first, `@core` aponta justamente para o que se quer abolir — os arquivos são movidos e os imports por alias viram caminho relativo quando o destino sai da raiz do alias.
+- **Não cria estrutura base.** Só as pastas que os moves exigem — nada de pasta vazia.
+- **Remove as pastas que ficaram vazias.** `core/`, `shared/` e `modules/` somem de fato após a migração.
+- **`shared/components/[x]/` preserva a subestrutura** ao virar `components/[x]/` — `models/`, `services/` e `sub-components/` continuam junto do componente.
+
+---
+
 ## Comandos
 
 ### `ngrao apply`
@@ -86,8 +147,9 @@ Os `index.ts` gerados re-exportam os arquivos existentes na pasta no momento da 
 Executa a reorganização. Pede confirmação antes de mover.
 
 ```bash
-ngrao apply           # modo interativo
-ngrao apply --yes     # pula confirmação
+ngrao apply                    # modo interativo
+ngrao apply --yes              # pula confirmação
+ngrao apply --feature-first    # layout feature-first (sem core/shared)
 ```
 
 ### `ngrao preview`
@@ -96,6 +158,7 @@ Mostra o que seria feito **sem alterar nada** no disco. Seguro para rodar em qua
 
 ```bash
 ngrao preview
+ngrao preview --feature-first
 ```
 
 ### `ngrao check`
@@ -104,6 +167,7 @@ Verifica se o projeto está organizado. Sai com código `1` se houver arquivos f
 
 ```bash
 ngrao check
+ngrao check --feature-first
 ```
 
 ### `ngrao barrel <path>`

@@ -2,8 +2,9 @@ import { isAngularProject } from '../detector/index.js';
 import { collectFiles } from '../classifier/index.js';
 import { buildPlan } from '../architect/index.js';
 import { logger } from '../logger/index.js';
+import { resolveMode, type LayoutOptions } from './options.js';
 
-export function previewCommand(): void {
+export function previewCommand(options?: LayoutOptions): void {
   const cwd = process.cwd();
 
   if (!isAngularProject(cwd)) {
@@ -11,8 +12,13 @@ export function previewCommand(): void {
     process.exit(1);
   }
 
-  const files = collectFiles(cwd);
-  const plan = buildPlan(files, cwd);
+  const mode = resolveMode(options);
+  if (mode === 'feature-first') {
+    logger.log('modo feature-first');
+  }
+
+  const files = collectFiles(cwd, mode);
+  const plan = buildPlan(files, cwd, mode);
 
   const actionable = plan.filter((a) => a.type !== 'skip');
 
