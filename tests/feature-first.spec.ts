@@ -148,6 +148,16 @@ describe('feature-first › co-location por feature', () => {
       .toBe('src/app/alarms/alarms.component.ts');
   });
 
+  it('component não-roteável homônimo da feature → raiz da feature (sem home/home/)', () => {
+    const p = plan([file({
+      filename: 'home.component.ts',
+      relativePath: 'src/app/modules/home/pages/home/home.component.ts',
+      kind: 'component', scope: 'feature', domain: 'home', role: 'component',
+    })]);
+    expect(moveTo(p, 'src/app/modules/home/pages/home/home.component.ts'))
+      .toBe('src/app/home/home.component.ts');
+  });
+
   it('component não-roteável → [feature]/[nome]/', () => {
     const p = plan([file({
       filename: 'alarm-card.component.ts',

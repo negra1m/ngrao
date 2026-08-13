@@ -75,10 +75,12 @@ export function resolveFeatureFirstDestination(
         return dest(`components/${stripSuffix(filename, '.component.ts')}`);
       }
       if (!domain || isReservedRootDir(domain)) return null;
-      // page roteável mora na raiz da feature; os demais ganham pasta própria
-      return role === 'page'
+      // page roteável mora na raiz da feature; os demais ganham pasta própria.
+      // component homônimo da feature também fica na raiz — home/home/ não ajuda ninguém.
+      const compName = stripSuffix(filename, '.component.ts');
+      return role === 'page' || compName === domain
         ? dest(domain)
-        : dest(`${domain}/${stripSuffix(filename, '.component.ts')}`);
+        : dest(`${domain}/${compName}`);
     }
 
     // providedIn: 'root' não define arquitetura — o que define é ter feature dona
