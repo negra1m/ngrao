@@ -1,20 +1,26 @@
 import fs from 'fs';
 import path from 'path';
-import type { AnalyzedFile, FileKind, FileScope, ComponentRole } from '../types.js';
+import type { AnalyzedFile, FileKind, FileScope, ComponentRole, LayoutMode } from '../types.js';
 import { readAliasRoots } from '../utils/tsconfig.js';
 import { walkFiles } from '../utils/walk.js';
+import { isReservedRootDir, readFeatureDirs } from '../utils/features.js';
 
 // Coleta todos os .ts relevantes em src/app (exceto spec, module, routing, routes, playground)
-export function collectFiles(cwd: string): AnalyzedFile[] {
+export function collectFiles(cwd: string, mode: LayoutMode = 'classic'): AnalyzedFile[] {
   const appRoot = path.join(cwd, 'src', 'app');
   if (!fs.existsSync(appRoot)) return [];
 
+  const featureFirst = mode === 'feature-first';
   const tsFiles = walkFiles(appRoot, isCollectible);
   const routedComponents = collectRoutedComponents(appRoot);
-  const aliasRoots = readAliasRoots(cwd);
-  const moduleNames = readModuleNames(appRoot);
+  // no modo feature-first as raízes de alias (@core, @shared) são justamente
+  // o que se quer migrar — respeitá-las deixaria o projeto inteiro parado
+  const aliasRoots = featureFirst ? [] : readAliasRoots(cwd);
+  const knownFeatures = featureFirst ? readFeatureDirs(appRoot) : readModuleNames(appRoot);
 
-  return tsFiles.map((abs) => analyze(abs, cwd, routedComponents, aliasRoots, moduleNames));
+  return tsFiles.map((abs) =>
+    analyze(abs, cwd, routedComponents, aliasRoots, knownFeatures, mode)
+  );
 }
 
 function isCollectible(name: string): boolean {
@@ -68,7 +74,8 @@ function analyze(
   cwd: string,
   routedComponents: Set<string>,
   aliasRoots: string[],
-  moduleNames: Set<string>
+  knownFeatures: Set<string>,
+  mode: LayoutMode
 ): AnalyzedFile {
   const filename = path.basename(abs);
   const relativePath = path.relative(cwd, abs).replace(/\\/g, '/');
@@ -79,7 +86,7 @@ function analyze(
 
   const content = fs.readFileSync(abs, 'utf-8');
   const scope = detectScope(kind, content, relativePath);
-  const domain = detectDomain(filename, kind, relativePath, moduleNames);
+  const domain = detectDomain(filename, kind, relativePath, knownFeatures, mode);
   const role = kind === 'component' ? detectRole(content, routedComponents) : undefined;
 
   return { absolutePath: abs, relativePath, filename, kind, scope, domain, role };
@@ -138,7 +145,8 @@ function detectDomain(
   filename: string,
   kind: FileKind,
   relativePath: string,
-  moduleNames: Set<string>
+  knownFeatures: Set<string>,
+  mode: LayoutMode
 ): string {
   // se já está dentro de modules/[feature]/, usa o nome da feature como domain
   const modulesMatch = relativePath.match(/src\/app\/modules\/([^/]+)\//);
@@ -147,6 +155,12 @@ function detectDomain(
   // se já está dentro de core/[tipo]/[domain]/, usa o domain do path
   const coreMatch = relativePath.match(/src\/app\/core\/(?:services|models|mocks|guards|interceptors)\/([^/]+)\//);
   if (coreMatch) return coreMatch[1];
+
+  // feature-first: qualquer pasta não reservada na raiz de src/app é uma feature
+  if (mode === 'feature-first') {
+    const rootMatch = relativePath.match(/^src\/app\/([^/]+)\//);
+    if (rootMatch && !isReservedRootDir(rootMatch[1])) return rootMatch[1];
+  }
 
   // fallback: segmentos do nome do arquivo.
   // Prefere o prefixo mais longo que corresponda a um módulo já existente:
@@ -157,7 +171,7 @@ function detectDomain(
   const parts = base.split('-');
   for (let i = parts.length; i > 1; i--) {
     const candidate = parts.slice(0, i).join('-');
-    if (moduleNames.has(candidate)) return candidate;
+    if (knownFeatures.has(candidate)) return candidate;
   }
   return parts[0] ?? base;
 }

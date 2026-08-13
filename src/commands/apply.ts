@@ -5,8 +5,9 @@ import { collectFiles } from '../classifier/index.js';
 import { buildPlan } from '../architect/index.js';
 import { execute } from '../writer/index.js';
 import { logger } from '../logger/index.js';
+import { resolveMode, type LayoutOptions } from './options.js';
 
-interface ApplyOptions {
+interface ApplyOptions extends LayoutOptions {
   yes?: boolean;
 }
 
@@ -18,8 +19,13 @@ export async function applyCommand(options: ApplyOptions): Promise<void> {
     process.exit(1);
   }
 
-  const files = collectFiles(cwd);
-  const plan = buildPlan(files, cwd);
+  const mode = resolveMode(options);
+  if (mode === 'feature-first') {
+    logger.log('modo feature-first — core/ e shared/ serão desmontados.');
+  }
+
+  const files = collectFiles(cwd, mode);
+  const plan = buildPlan(files, cwd, mode);
 
   const actionable = plan.filter((a) => a.type !== 'skip');
 
@@ -46,12 +52,15 @@ export async function applyCommand(options: ApplyOptions): Promise<void> {
     }
   }
 
-  const report = execute(plan, cwd);
+  const report = execute(plan, cwd, { pruneEmptyDirs: mode === 'feature-first' });
 
   console.log('');
   logger.success(
     `Pronto. ${report.moved} arquivos movidos, ${report.created} pastas criadas, ${report.barrels} barrels gerados, ${report.skipped} ignorados.`
   );
+  if (report.pruned > 0) {
+    logger.log(`${report.pruned} pasta(s) vazia(s) removida(s).`);
+  }
 }
 
 // Enter, y/yes, s/sim confirmam; qualquer outra resposta cancela

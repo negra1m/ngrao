@@ -17,6 +17,11 @@ export type FileScope =
 
 export type ComponentRole = 'page' | 'component';
 
+// Layout de destino:
+//   classic       — core/ + shared/ + modules/[feature]/ (padrão até a v1.1)
+//   feature-first — feature na raiz de src/app/, global por tipo, sem core/shared
+export type LayoutMode = 'classic' | 'feature-first';
+
 export interface AnalyzedFile {
   absolutePath: string;
   relativePath: string;   // relativo ao cwd
@@ -43,6 +48,7 @@ export interface Report {
   created: number;
   barrels: number;
   skipped: number;
+  pruned: number;   // pastas que ficaram vazias e foram removidas (feature-first)
 }
 
 export interface FileEntry {
